@@ -9,14 +9,14 @@
 
 
 read_data <- function(file_path, rig){
-  if(!(rig %in% c(1,2,3,4))){
+  if(!(rig %in% c(1,2,3,4,"2_new"))){
     stop("input rig number")
   }
   if(file.exists(file_path) == FALSE){
     stop("File does not exist")
   }
   data <- readxl::read_excel(file_path)
-  if(rig %in% c(3,4)){
+  if(rig %in% c(3,4,"2_new")){
     data <- subset(data, data$Sx == 0)
     data$rig = rig
     return(data)

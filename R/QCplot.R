@@ -3,17 +3,21 @@
 #' plot
 #' @param plt_data, data to plot
 #' @param res_file, output file name
+#' @param stability stability threshold default = 15%
+#' @param first10vssecond10 first 10 mins - second 10 mins default = 10
+#' @param lm_no deviation calculated from lm baseline default = 5
+#' @param stability_test test for stability, if unstable after this minute test will fail default = 30
 #' @return generates a plot
 #' @import ggplot2
 #' @import ggpubr
 #' @export
 #
 
-QCplot <- function(plt_data, res_file){
+QCplot <- function(plt_data, res_file, stability = 15, first10vssecond10 = 10, lm_no = 5, stability_test = 30){
   plt_data <- subset(plt_data, plt_data$time < 70)
 
-  first5 <- subset(plt_data, plt_data$time > -20 & plt_data$time < -10)
-  second5 <- subset(plt_data, plt_data$time > -10 & plt_data$time < 0)
+  first10 <- subset(plt_data, plt_data$time > -20 & plt_data$time < -10)
+  second10 <- subset(plt_data, plt_data$time > -10 & plt_data$time < 0)
 
   baseline_dat <- subset(plt_data, plt_data$time < 0)
 
@@ -46,17 +50,33 @@ QCplot <- function(plt_data, res_file){
   }
 
   #optimise this
-  qc_res$test <- (qc_res$diff < -10 | qc_res$diff > 10)
+  qc_res$test <- (qc_res$diff < -stability | qc_res$diff > stability)
 
   mark <- subset(qc_res, qc_res$test == TRUE)
   mark$group <- seq_along(mark$start)
-
+  
+  first10vssecond10_val = mean(first10$slope) - mean(second10$slope)
+  
+  LTD = subset(plt_data, plt_data$time >55 & plt_data$time<65)
+  LTD = 100 - mean(LTD$slope)
+  
+  qcrport <- data.frame(QCID = res_file,
+                        first10vssecond10_val = as.numeric(first10vssecond10_val),
+                        first10vssecond10_res = if(first10vssecond10_val > first10vssecond10 | 
+                                                   first10vssecond10_val < -first10vssecond10){"Fail"}else{"Pass"},
+                        lm_baseline_val = as.numeric(diff_lm),
+                        lm_baseline_res = if(diff_lm > lm_no |
+                                             diff_lm < -lm_no){"Fail"}else{"Pass"},
+                        stability_res = if(sum(apply(mark, 1, function(x){x[1] > stability_test})) > 0){"Fail"}else{"Pass"},
+                        LTD = LTD)
+  
+  
   firstvssecond <- ggplot(plt_data, aes(time, slope))+
     geom_point() + geom_vline(xintercept = 0, lty = 2) +
     coord_cartesian(ylim = c(0,125)) + geom_segment(aes(x = 55, y = 0, xend = 65, yend = 0)) +
-    geom_segment(aes(x = -20, y = mean(first5$slope), xend = -10, yend = mean(first5$slope), colour = "red", linetype = "dashed")) +
-    geom_segment(aes(x = -10, y = mean(second5$slope), xend = -0, yend = mean(second5$slope), colour = "red", linetype = "dashed")) +
-    geom_text(x = 65, y = 120, label = paste("Diff = ", mean(first5$slope) - mean(second5$slope) ,sep=""), hjust = 1, vjust = 0)+ ggtitle("basline slop")+
+    geom_segment(aes(x = -20, y = mean(first10$slope), xend = -10, yend = mean(first10$slope), colour = "red", linetype = "dashed")) +
+    geom_segment(aes(x = -10, y = mean(second10$slope), xend = -0, yend = mean(second10$slope), colour = "red", linetype = "dashed")) +
+    geom_text(x = 65, y = 120, label = paste("Diff = ", mean(first10$slope) - mean(second10$slope) ,sep=""), hjust = 1, vjust = 0)+ ggtitle("basline slop")+
     theme(legend.position = "none")+
     ggtitle("First 10 mins vs second 10 mins") +
     xlab("Time (0 = DHPG stim)") + ylab("Slope % baseline")
@@ -85,4 +105,5 @@ QCplot <- function(plt_data, res_file){
   output <- ggarrange(firstvssecond, baseline, QC,
            ncol = 3)
   ggsave(filename = res_file, plot = output, width = 13.541666667, height = 3.6458333333, units = "in")
+  return(qcrport)
 }
