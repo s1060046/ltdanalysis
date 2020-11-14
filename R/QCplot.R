@@ -3,24 +3,23 @@
 #' plot
 #' @param plt_data, data to plot
 #' @param res_file, output file name
-#' @param stability stability threshold default = 15%
 #' @param first10vssecond10 first 10 mins - second 10 mins default = 10
 #' @param lm_no deviation calculated from lm baseline default = 5
-#' @param stability_test test for stability, if unstable after this minute test will fail default = 30
+#' @param stability_test test for stability, if error is above it will fail default = 7
 #' @return generates a plot
 #' @import ggplot2
 #' @import ggpubr
 #' @export
 #
 
-QCplot <- function(plt_data, res_file, stability = 15, first10vssecond10 = 10, lm_no = 5, stability_test = 30){
+QCplot <- function(plt_data, res_file, first10vssecond10 = 10, lm_no = 7, stability_test = 7){
   plt_data <- subset(plt_data, plt_data$time < 70)
 
   first10 <- subset(plt_data, plt_data$time > -20 & plt_data$time < -10)
   second10 <- subset(plt_data, plt_data$time > -10 & plt_data$time < 0)
 
   baseline_dat <- subset(plt_data, plt_data$time < 0)
-
+  stim_time = baseline_dat$stim_time[1]
   # SOURCE: https://groups.google.com/forum/#!topic/ggplot2/1TgH-kG5XMA
   lm_eqn <- function(df){
     m <- lm(slope ~ time, df);
@@ -35,30 +34,39 @@ QCplot <- function(plt_data, res_file, stability = 15, first10vssecond10 = 10, l
   first = -20*coef(m)[2] + coef(m)[1]
   second = coef(m)[1]
   diff_lm <- second - first
-
-  qcdata <- subset(plt_data, plt_data$time > 0)
-  qc_res <- data.frame()
-  for(i in 1:dim(qcdata)[1]){
-    if(i < (dim(qcdata)[1]-3)){
-      qcdat <- qcdata[i:(i+2),]
-      diff <- qcdat$slope[1] - qcdat$slope[3]
-      exp_data <- data.frame(start = qcdat$time[1],
-                             end = qcdat$time[3],
-                             diff = diff)
-      qc_res <- rbind(qc_res,exp_data)
-    }
+  
+  #exponential decay fit
+  time_cut <- subset(plt_data, plt_data$time < 15)
+  time_cut <- time_cut[time_cut$slope == min(time_cut$slope),]$time
+  expo_fit <- subset(plt_data, plt_data$time > time_cut)
+  expo_fit$slope <-120 - expo_fit$slope
+  c.0 <- min(expo_fit$slope) * 0.5
+  model.0 <- lm(log(slope - c.0) ~ time, data=expo_fit)
+  start <- list(a=exp(coef(model.0)[1]), b=-coef(model.0)[2], c=c.0)
+  nlc <- nls.control(maxiter = 1000)
+  
+  model <- try(nls(slope ~ a * exp(-b * time) + c, data = expo_fit, start = start, control = nlc), silent = TRUE)
+  if(inherits(model, "try-error")){
+    expo_plot <- data.frame(time = expo_fit$time,
+                            slope = -10)
+    error = NA
+  }else{
+    expo_plot <- data.frame(time = expo_fit$time,
+                            slope = 120-predict(model))
+    error = expo_fit$slope - predict(model)
+    error = sqrt(mean(error^2))
   }
-
-  #optimise this
-  qc_res$test <- (qc_res$diff < -stability | qc_res$diff > stability)
-
-  mark <- subset(qc_res, qc_res$test == TRUE)
-  mark$group <- seq_along(mark$start)
+  
+  
   
   first10vssecond10_val = mean(first10$slope) - mean(second10$slope)
   
   LTD = subset(plt_data, plt_data$time >55 & plt_data$time<65)
   LTD = 100 - mean(LTD$slope)
+  LTD_55_60 = subset(plt_data, plt_data$time >55 & plt_data$time<60)
+  LTD_55_60 = 100 - mean(LTD_55_60$slope)
+  LTD_50_60 = subset(plt_data, plt_data$time >50 & plt_data$time<65)
+  LTD_50_60 = 100 - mean(LTD_50_60$slope)
   
   qcrport <- data.frame(QCID = res_file,
                         first10vssecond10_val = as.numeric(first10vssecond10_val),
@@ -67,8 +75,10 @@ QCplot <- function(plt_data, res_file, stability = 15, first10vssecond10 = 10, l
                         lm_baseline_val = as.numeric(diff_lm),
                         lm_baseline_res = if(diff_lm > lm_no |
                                              diff_lm < -lm_no){"Fail"}else{"Pass"},
-                        stability_res = if(sum(apply(mark, 1, function(x){x[1] > stability_test})) > 0){"Fail"}else{"Pass"},
-                        LTD = LTD)
+                        error = error,
+                        error_res = if(error > stability_test | is.na(error)){"Fail"}else{"Pass"},
+                        LTD = LTD, LTD_55_60 = LTD_55_60, LTD_50_60 = LTD_50_60, mean_amp_baseline = mean(baseline_dat$amp),
+                        stim_time = stim_time)
   
   
   firstvssecond <- ggplot(plt_data, aes(time, slope))+
@@ -94,10 +104,8 @@ QCplot <- function(plt_data, res_file, stability = 15, first10vssecond10 = 10, l
 
   QC <- ggplot(plt_data, aes(time, slope))+
     geom_point() + geom_vline(xintercept = 0, lty = 2) +
-    coord_cartesian(ylim = c(0,125)) + geom_segment(aes(x = 55, y = 0, xend = 65, yend = 0)) +
-    geom_rect(data=mark, inherit.aes=FALSE,
-              aes(xmin=start, xmax=end, ymin=0
-                  ,ymax=130, group=group), color="transparent", fill="orange", alpha=0.3) +
+    coord_cartesian(ylim = c(0,125)) + geom_line(data = expo_plot, color = "Red", lty = 2) +
+    geom_text(x = 65, y = 120, label = paste("Error = ", error, sep = ""), hjust = 1, vjust = 0)+
     ggtitle("LTD Stability") +
     xlab("Time (0 = DHPG stim)") + ylab("Slope % baseline")
 

@@ -12,13 +12,16 @@ clean_data <- function(recording, stim_sweep){
 
   if(inherits(recording, "data.frame")){
     stim_time <- suppressWarnings(recording[grep(pattern = stim_sweep, recording$Filename)[1],]$Time_min)
-
+    
     plot_data <- subset(recording, recording$Time_min > stim_time-20)
-
+    start_time <- subset(recording, recording$Time_min == stim_time)
+    start_time <- start_time$TimeOfDay
+    
     df_summary <- plot_data %>% as_tibble(rownames = "names") %>%
       group_by(ceiling(1:n() / 2)) %>%
       summarise(time = mean(Time_min),
-                slope = -mean(`Slope_unit/ms`)) %>%
+                slope = -mean(`Slope_unit/ms`),
+                amp = -mean(PkAmp)) %>%
       select(-1)
 
     baseline <- mean(subset(df_summary, df_summary$time  < stim_time)$slope)
@@ -26,7 +29,7 @@ clean_data <- function(recording, stim_sweep){
     df_summary$slope <- df_summary$slope / baseline * 100
     df_summary$time = df_summary$time - stim_time
     df_summary$rig = unique(recording$rig)
-
+    df_summary$stim_time = start_time
     return(df_summary)
   } else{
     stop("input structure wrong check the input data - needs to be an output of read_data function")
