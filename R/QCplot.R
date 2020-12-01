@@ -62,11 +62,11 @@ QCplot <- function(plt_data, res_file, first10vssecond10 = 10, lm_no = 7, stabil
   first10vssecond10_val = mean(first10$slope) - mean(second10$slope)
   
   LTD = subset(plt_data, plt_data$time >55 & plt_data$time<65)
-  LTD = 100 - mean(LTD$slope)
+  LTD = mean(subset(plt_data, plt_data$time > -5 & plt_data$time < 0)$slope) - mean(LTD$slope)
   LTD_55_60 = subset(plt_data, plt_data$time >55 & plt_data$time<60)
-  LTD_55_60 = 100 - mean(LTD_55_60$slope)
+  LTD_55_60 = mean(subset(plt_data, plt_data$time > -5 & plt_data$time < 0)$slope) - mean(LTD_55_60$slope)
   LTD_50_60 = subset(plt_data, plt_data$time >50 & plt_data$time<65)
-  LTD_50_60 = 100 - mean(LTD_50_60$slope)
+  LTD_50_60 = mean(subset(plt_data, plt_data$time > -5 & plt_data$time < 0)$slope) - mean(LTD_50_60$slope)
   
   qcrport <- data.frame(QCID = res_file,
                         first10vssecond10_val = as.numeric(first10vssecond10_val),

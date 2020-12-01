@@ -18,7 +18,9 @@ QC <- function(file_path, rig, stim_sweep, res_file, first10vssecond10 = 10, lm_
     dir.create(path = "./QCdata")
   }
   dat <- read_data(file_path = file_path, rig =rig)
+  drug_start = dat[1,]$TimeOfDay
   dat_c <- clean_data(recording = dat, stim_sweep = stim_sweep)
   res_file = paste("./QCdata/", res_file, sep = "")
-  QCplot(dat_c, res_file, first10vssecond10 = first10vssecond10, lm_no = lm_no, stability_test = stability_test)
+  report <- QCplot(dat_c, res_file, first10vssecond10 = first10vssecond10, lm_no = lm_no, stability_test = stability_test)
+  return(cbind(report, drug_start))
 }
